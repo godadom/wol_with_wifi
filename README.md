@@ -424,11 +424,9 @@ MAC=AA:BB:CC:DD:EE:FF
 
 本项目参考了以下思路：
 
-* ESP8266/ESP32 通过点灯科技触发 WOL
-* ESP32 WebServer 配网
-* ESP32 Preferences 持久化保存配置
-* WT32-ETH01 / LAN8720 以太网通信
-* Wake-on-LAN 魔术包格式
+* [luo216 / wol](https://github.com/luo216/wol)
+* [CURAS / WoL-esp32](https://github.com/CURAS/WoL-esp32)
+* [memst / wol_esp](https://github.com/memst/wol_esp)
 
 与普通 WOL 项目不同的是，本项目采用：
 
