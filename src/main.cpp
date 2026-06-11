@@ -46,6 +46,9 @@ const byte DNS_PORT = 53;
 bool portalMode = false;
 bool blinkerReady = false;
 
+unsigned long lastWolTriggerMs = 0;
+const unsigned long WOL_DEBOUNCE_MS = 5000;
+
 // =========================
 // 保存的配置
 // =========================
@@ -288,6 +291,44 @@ bool sendWOL() {
   return anyOK;
 }
 
+bool triggerWOL(const String &source) {
+  unsigned long now = millis();
+
+  if (now - lastWolTriggerMs < WOL_DEBOUNCE_MS) {
+    Serial.println("WOL ignored because of debounce.");
+    TextStatus.print("WOL 已忽略：短时间内重复触发");
+    return false;
+  }
+
+  lastWolTriggerMs = now;
+
+  Serial.println();
+  Serial.println("========== WOL 触发 ==========");
+  Serial.print("Trigger source: ");
+  Serial.println(source);
+  Serial.println("==============================");
+
+  bool ok = sendWOL();
+
+  if (ok) {
+    ButtonWOL.text("远程开机");
+    ButtonWOL.color("#00A90C");
+    ButtonWOL.print("off");
+
+    TextStatus.print("WOL 已发送，来源：" + source);
+    Blinker.print("result", "success");
+  } else {
+    ButtonWOL.text("发送失败");
+    ButtonWOL.color("#EA0909");
+    ButtonWOL.print("off");
+
+    TextStatus.print("WOL 发送失败，请检查 MAC 或 ETH 链路");
+    Blinker.print("result", "failed");
+  }
+
+  return ok;
+}
+
 // =========================
 // Web 页面
 // =========================
@@ -466,26 +507,10 @@ void startEthernet() {
 // =========================
 
 void wolButtonCallback(const String &state) {
-  Serial.print("Blinker button state: ");
+  Serial.print("Blinker btn-wol state: ");
   Serial.println(state);
 
-  bool ok = sendWOL();
-
-  if (ok) {
-    ButtonWOL.text("远程开机");
-    ButtonWOL.color("#00A90C");
-    ButtonWOL.print("off");
-
-    TextStatus.print("WOL 魔术包已从 RJ45 口发送");
-    Blinker.print("result", "success");
-  } else {
-    ButtonWOL.text("发送失败");
-    ButtonWOL.color("#EA0909");
-    ButtonWOL.print("off");
-
-    TextStatus.print("WOL 发送失败，请检查 MAC 或 ETH 链路");
-    Blinker.print("result", "failed");
-  }
+  triggerWOL("Blinker按钮/定时任务");
 }
 
 // 支持从点灯 App 调试/文本输入下发：
@@ -494,8 +519,39 @@ void dataRead(const String &data) {
   Serial.print("Blinker raw data: ");
   Serial.println(data);
 
-  if (data.startsWith("MAC=")) {
-    String newMac = data.substring(4);
+  String cmd = data;
+  cmd.trim();
+
+  // 方式一：点灯 App 调试区或文本命令直接发送 WOL / BOOT / POWERON
+  if (
+    cmd.equalsIgnoreCase("WOL") ||
+    cmd.equalsIgnoreCase("BOOT") ||
+    cmd.equalsIgnoreCase("POWERON") ||
+    cmd.equalsIgnoreCase("ON")
+  ) {
+    triggerWOL("Blinker命令");
+    return;
+  }
+
+  // 方式二：兼容某些定时/自动化任务下发 JSON 的情况
+  // 只要数据里明确包含 btn-wol，并且包含 on，就触发一次
+  if (
+    cmd.indexOf("btn-wol") >= 0 &&
+    (
+      cmd.indexOf("on") >= 0 ||
+      cmd.indexOf("true") >= 0 ||
+      cmd.indexOf("tap") >= 0
+    )
+  ) {
+    triggerWOL("Blinker定时JSON");
+    return;
+  }
+
+  // 方式三：支持远程修改目标电脑 MAC
+  // 在点灯 App 调试区发送：
+  // MAC=AA:BB:CC:DD:EE:FF
+  if (cmd.startsWith("MAC=")) {
+    String newMac = cmd.substring(4);
     newMac.trim();
 
     uint8_t testMac[6];
@@ -519,6 +575,8 @@ void dataRead(const String &data) {
       TextStatus.print("MAC 格式错误");
       Blinker.print("MAC", "invalid");
     }
+
+    return;
   }
 }
 
