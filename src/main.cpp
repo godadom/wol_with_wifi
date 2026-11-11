@@ -665,6 +665,7 @@ void setup() {
   Serial.println();
   Serial.println("====================================");
   Serial.println("ESP32 / WT32-ETH01 WOL Controller");
+  Serial.println("Firmware: MQTT recovery fix 2");
   Serial.println("====================================");
 
   // 先启动 ETH，保证笔记本关机时有线网卡能看到链路
@@ -708,5 +709,17 @@ void loop() {
 
   if (blinkerReady) {
     Blinker.run();
+  }
+
+  static unsigned long lastNetworkLogMs = 0;
+  unsigned long now = millis();
+  if (now - lastNetworkLogMs >= 30000) {
+    lastNetworkLogMs = now;
+    bool mqttTcpConnected = mqtt_MQTT != nullptr && mqtt_MQTT->connected();
+    Serial.printf("[NET] uptime=%lus wifi=%d rssi=%d eth=%d mqtt_tcp=%d heap=%u\n",
+                  now / 1000, static_cast<int>(WiFi.status()), WiFi.RSSI(),
+                  ETH.linkUp() ? 1 : 0,
+                  mqttTcpConnected ? 1 : 0,
+                  ESP.getFreeHeap());
   }
 }
